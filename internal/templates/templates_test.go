@@ -39,7 +39,7 @@ func TestWrapperRendersProxySettings(t *testing.T) {
 		NoProxy:    "localhost,.internal.example.com,10.0.0.0/8",
 	}
 
-	for _, osType := range []commonParams.OSType{commonParams.Linux, commonParams.Windows} {
+	for _, osType := range []commonParams.OSType{commonParams.Linux, commonParams.Windows, commonParams.Darwin} {
 		t.Run(string(osType), func(t *testing.T) {
 			rendered, err := RenderRunnerInstallWrapper(ctx, osType, "https://garm.example.com/api/v1/metadata", "https://garm.example.com/api/v1/callbacks", "token", commonParams.ProxyConfig{})
 			if err != nil {
@@ -67,7 +67,7 @@ func TestWrapperRendersProxySettings(t *testing.T) {
 					}
 				}
 			} else if !strings.Contains(string(rendered), `export https_proxy='`+proxyCfg.HTTPSProxy+`'`) {
-				t.Error("expected lowercase https_proxy export in the linux wrapper")
+				t.Errorf("expected lowercase https_proxy export in the %s wrapper", osType)
 			}
 		})
 	}

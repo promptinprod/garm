@@ -29,6 +29,7 @@ var (
 	supportedOSType map[params.OSType]struct{} = map[params.OSType]struct{}{
 		params.Linux:   {},
 		params.Windows: {},
+		params.Darwin:  {},
 	}
 
 	// These are the architectures GARM can find runner tools for. Upstream

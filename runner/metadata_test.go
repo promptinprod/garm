@@ -652,6 +652,67 @@ func (s *MetadataTestSuite) TestGetInstanceMetadataUnauthorized() {
 	s.Require().ErrorIs(err, runnerErrors.ErrUnauthorized)
 }
 
+func (s *MetadataTestSuite) TestDarwinScaleSetBootstrap() {
+	entity := s.Fixtures.TestEntity
+	template, err := s.Runner.CreateTemplate(s.adminCtx, params.CreateTemplateParams{
+		Name:      "test-darwin-template",
+		OSType:    commonParams.Darwin,
+		ForgeType: params.GithubEndpointType,
+		Data:      []byte("#!/bin/bash\necho '{{ .FileName }}'\n"),
+	})
+	s.Require().NoError(err)
+
+	scaleSetParams := params.CreateScaleSetParams{
+		Name:         "test-darwin-scaleset",
+		ScaleSetID:   1,
+		ProviderName: "test-provider",
+		MaxRunners:   1,
+		Image:        "test-image",
+		Flavor:       "medium",
+		OSType:       commonParams.Darwin,
+		OSArch:       commonParams.Arm64,
+		TemplateID:   &template.ID,
+	}
+	_, err = s.Runner.findTemplate(s.adminCtx, entity, scaleSetParams.OSType, scaleSetParams.TemplateID)
+	s.Require().NoError(err)
+	scaleSet, err := s.Fixtures.Store.CreateEntityScaleSet(s.adminCtx, entity, scaleSetParams)
+	s.Require().NoError(err)
+
+	const runnerConfig = "synthetic runner config"
+	instance, err := s.Fixtures.Store.CreateScaleSetInstance(s.adminCtx, scaleSet.ID, params.CreateInstanceParams{
+		Name:         "test-darwin-instance",
+		OSType:       scaleSet.OSType,
+		OSArch:       scaleSet.OSArch,
+		RunnerStatus: params.RunnerPending,
+		JitConfiguration: map[string]string{
+			".runner": base64.StdEncoding.EncodeToString([]byte(runnerConfig)),
+		},
+	})
+	s.Require().NoError(err)
+
+	const filename = "actions-runner-osx-arm64.tar.gz"
+	cache.SetGithubToolsCache(entity, []commonParams.RunnerApplicationDownload{
+		{OS: garmTesting.Ptr("linux"), Architecture: garmTesting.Ptr("arm64")},
+		{OS: garmTesting.Ptr("osx"), Architecture: garmTesting.Ptr("x64")},
+		{OS: garmTesting.Ptr("osx"), Architecture: garmTesting.Ptr("arm64"), Filename: garmTesting.Ptr(filename)},
+	})
+
+	ctx := auth.SetInstanceParams(s.instanceCtx, instance)
+	ctx = auth.SetInstanceHasJITConfig(ctx, instance.JitConfiguration)
+	metadata, err := s.Runner.GetInstanceMetadata(ctx)
+	s.Require().NoError(err)
+	s.Require().True(metadata.JITEnabled)
+	s.Require().Equal(filename, metadata.RunnerTools.GetFilename())
+
+	script, err := s.Runner.GetRunnerInstallScript(ctx)
+	s.Require().NoError(err)
+	s.Require().Contains(string(script), filename)
+
+	jitFile, err := s.Runner.GetJITConfigFile(ctx, ".runner")
+	s.Require().NoError(err)
+	s.Require().Equal(runnerConfig, string(jitFile))
+}
+
 func (s *MetadataTestSuite) TestGetInstanceMetadataInvalidState() {
 	_, err := s.Runner.GetInstanceMetadata(s.invalidInstanceCtx)
 	s.Require().NotNil(err)
